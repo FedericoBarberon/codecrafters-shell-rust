@@ -1,20 +1,28 @@
 pub enum Command {
     Exit,
+    Echo(String),
 }
 
 #[derive(thiserror::Error, Debug)]
-#[error("{input}: command not found")]
+#[error("{command}: command not found")]
 pub struct ParseError {
-    input: String,
+    command: String,
 }
 
 impl Command {
     pub fn parse(input: &str) -> Result<Self, ParseError> {
-        let input = input.trim().to_lowercase();
+        let input = input.trim();
+        let (command, args) = input.split_once(' ').unwrap_or((input, ""));
 
-        match input.as_str() {
+        let command = command.to_lowercase();
+        let args = args.trim_start();
+
+        match command.as_str() {
             "exit" => Ok(Self::Exit),
-            _ => Err(ParseError { input }),
+            "echo" => Ok(Self::Echo(args.into())),
+            _ => Err(ParseError {
+                command: command.into(),
+            }),
         }
     }
 }

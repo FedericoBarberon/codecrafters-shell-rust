@@ -14,6 +14,7 @@ fn main() {
 
         match Command::parse(&buf) {
             Ok(Command::Exit) => break,
+            Ok(Command::Echo(msg)) => println!("{msg}"),
             Err(e) => println!("{e}"),
         }
     }
