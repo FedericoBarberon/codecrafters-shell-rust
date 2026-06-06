@@ -1,3 +1,4 @@
+use codecrafters_shell::commands::Command;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
@@ -11,12 +12,9 @@ fn main() {
             .read_line(&mut buf)
             .expect("failed to read command");
 
-        let command = buf.trim();
-
-        if command == "exit" {
-            break;
+        match Command::parse(&buf) {
+            Ok(Command::Exit) => break,
+            Err(e) => println!("{e}"),
         }
-
-        println!("{command}: command not found");
     }
 }
