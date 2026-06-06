@@ -12,6 +12,11 @@ fn main() {
             .expect("failed to read command");
 
         let command = buf.trim();
+
+        if command == "exit" {
+            break;
+        }
+
         println!("{command}: command not found");
     }
 }
