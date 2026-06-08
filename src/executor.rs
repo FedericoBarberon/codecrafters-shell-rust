@@ -41,8 +41,8 @@ pub fn execute(
 
             Ok(ExecutionResult::Continue)
         }
-        Command::External { path, args } => {
-            let _status = process::Command::new(path)
+        Command::External { command, args } => {
+            let _status = process::Command::new(command)
                 .args(args)
                 .status()
                 .map_err(|error| ExecuteError {

@@ -22,7 +22,7 @@ pub fn resolve_command(
 ) -> Result<Command, ResolveError> {
     match lookup(&command) {
         Some(CommandType::BuiltIn) => resolve_builtin(command, args),
-        Some(CommandType::External { path }) => Ok(Command::External { path, args }),
+        Some(CommandType::External { path: _ }) => Ok(Command::External { command, args }),
         None => Err(ResolveError::UnknownCommand { command }),
     }
 }
