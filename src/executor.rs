@@ -3,10 +3,13 @@ use crate::{
     resolver::lookup,
 };
 use std::io::Write;
+use std::process;
 
 #[derive(Debug, thiserror::Error, PartialEq)]
-#[error("Failed to execute command")]
-pub struct ExecuteError {}
+#[error("{error}")]
+pub struct ExecuteError {
+    error: String,
+}
 
 #[derive(Debug, PartialEq)]
 pub enum ExecutionResult {
@@ -35,6 +38,16 @@ pub fn execute(
                     None => writeln!(out, "{arg} not found"),
                 };
             }
+
+            Ok(ExecutionResult::Continue)
+        }
+        Command::External { path, args } => {
+            let _status = process::Command::new(path)
+                .args(args)
+                .status()
+                .map_err(|error| ExecuteError {
+                    error: error.to_string(),
+                })?;
 
             Ok(ExecutionResult::Continue)
         }

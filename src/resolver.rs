@@ -20,6 +20,14 @@ pub enum ResolveError {
 pub fn resolve_command(
     ParsedCommand { command, args }: ParsedCommand,
 ) -> Result<Command, ResolveError> {
+    match lookup(&command) {
+        Some(CommandType::BuiltIn) => resolve_builtin(command, args),
+        Some(CommandType::External { path }) => Ok(Command::External { path, args }),
+        None => Err(ResolveError::UnknownCommand { command }),
+    }
+}
+
+fn resolve_builtin(command: String, args: Vec<String>) -> Result<Command, ResolveError> {
     match command.as_str() {
         "exit" => {
             if args.is_empty() {
@@ -36,7 +44,7 @@ pub fn resolve_command(
                 Ok(Command::Type { args })
             }
         }
-        _ => Err(ResolveError::UnknownCommand { command }),
+        _ => unreachable!(),
     }
 }
 
