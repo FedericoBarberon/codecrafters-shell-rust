@@ -58,7 +58,7 @@ fn find_binary(name: &str, paths: &str) -> Option<PathBuf> {
     for mut path in env::split_paths(paths) {
         path.push(name);
 
-        if path.exists() && path.is_file() {
+        if path.is_file() {
             #[cfg(unix)]
             {
                 use permissions::is_executable;
