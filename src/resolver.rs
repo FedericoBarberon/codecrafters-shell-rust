@@ -1,3 +1,5 @@
+use std::{env, path::PathBuf};
+
 use crate::{
     commands::{Command, CommandType},
     parser::ParsedCommand,
@@ -38,11 +40,42 @@ pub fn resolve_command(
     }
 }
 
-pub fn lookup(input: &str) -> Option<CommandType> {
-    match input {
-        "echo" | "exit" | "type" => Some(CommandType::BuiltIn),
-        _ => None,
+pub fn lookup(command: &str) -> Option<CommandType> {
+    if is_builtin(command) {
+        Some(CommandType::BuiltIn)
+    } else if let Some(path) = find_binary(command, &env::var("PATH").ok()?) {
+        Some(CommandType::External { path })
+    } else {
+        None
     }
+}
+
+fn is_builtin(command: &str) -> bool {
+    ["echo", "exit", "type"].contains(&command)
+}
+
+fn find_binary(name: &str, paths: &str) -> Option<PathBuf> {
+    for mut path in env::split_paths(paths) {
+        path.push(name);
+
+        if path.exists() && path.is_file() {
+            #[cfg(unix)]
+            {
+                use permissions::is_executable;
+
+                if is_executable(&path).unwrap_or(false) {
+                    return Some(path);
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                return Some(path);
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -127,6 +160,248 @@ mod tests {
             });
 
             test_resolve(input, expected);
+        }
+    }
+
+    #[test]
+    fn lookup_builtin() {
+        let commands = ["echo", "exit", "type"];
+
+        for cmd in commands {
+            assert_eq!(lookup(cmd), Some(CommandType::BuiltIn));
+        }
+    }
+
+    #[test]
+    fn lookup_unknown() {
+        assert_eq!(lookup("unknown_command_foo"), None);
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[cfg(unix)]
+        mod unix {
+            use super::*;
+            use std::fs;
+            use std::os::unix::fs::PermissionsExt;
+            use std::path::{Path, PathBuf};
+            use tempfile::tempdir;
+
+            fn create_file(dir: &Path, name: &str, executable: bool) -> PathBuf {
+                let path = dir.join(name);
+
+                fs::write(&path, "").unwrap();
+
+                let mut perms = fs::metadata(&path).unwrap().permissions();
+                perms.set_mode(if executable { 0o755 } else { 0o644 });
+                fs::set_permissions(&path, perms).unwrap();
+
+                path
+            }
+
+            fn make_path(paths: &[&Path]) -> String {
+                std::env::join_paths(paths)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            }
+
+            #[test]
+            fn finds_binary_in_first_directory() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let binary = create_file(dir1.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(binary));
+            }
+
+            #[test]
+            fn finds_binary_in_last_directory() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let binary = create_file(dir2.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(binary));
+            }
+
+            #[test]
+            fn returns_none_when_binary_does_not_exist() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), None);
+            }
+
+            #[test]
+            fn returns_first_match_when_binary_exists_multiple_times() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let first = create_file(dir1.path(), "mycmd", true);
+                create_file(dir2.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(first));
+            }
+
+            #[test]
+            fn ignores_non_executable_files() {
+                let dir = tempdir().unwrap();
+
+                create_file(dir.path(), "mycmd", false);
+
+                let path = make_path(&[dir.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), None);
+            }
+
+            #[test]
+            fn skips_non_executable_match_and_finds_executable_one() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                create_file(dir1.path(), "mycmd", false);
+                let executable = create_file(dir2.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(executable));
+            }
+
+            #[test]
+            fn ignores_directories_with_matching_name() {
+                let dir = tempdir().unwrap();
+
+                fs::create_dir(dir.path().join("mycmd")).unwrap();
+
+                let path = make_path(&[dir.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), None);
+            }
+        }
+
+        #[cfg(windows)]
+        mod windows {
+            use super::*;
+            use std::env;
+            use std::ffi::OsString;
+            use std::fs;
+            use std::path::{Path, PathBuf};
+            use tempfile::tempdir;
+
+            fn create_file(dir: &Path, name: &str, executable: bool) -> PathBuf {
+                let filename = if executable {
+                    format!("{name}.exe")
+                } else {
+                    name.to_string()
+                };
+
+                let path = dir.join(filename);
+
+                fs::write(&path, "").unwrap();
+
+                path
+            }
+
+            fn make_path(paths: &[&Path]) -> String {
+                std::env::join_paths(paths)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            }
+
+            #[test]
+            fn finds_binary_in_first_directory() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let binary = create_file(dir1.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(binary));
+            }
+
+            #[test]
+            fn finds_binary_in_last_directory() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let binary = create_file(dir2.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(binary));
+            }
+
+            #[test]
+            fn returns_none_when_binary_does_not_exist() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), None);
+            }
+
+            #[test]
+            fn returns_first_match_when_binary_exists_multiple_times() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                let first = create_file(dir1.path(), "mycmd", true);
+                create_file(dir2.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(first));
+            }
+
+            #[test]
+            fn ignores_non_executable_files() {
+                let dir = tempdir().unwrap();
+
+                create_file(dir.path(), "mycmd", false);
+
+                let path = make_path(&[dir.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), None);
+            }
+
+            #[test]
+            fn skips_non_executable_match_and_finds_executable_one() {
+                let dir1 = tempdir().unwrap();
+                let dir2 = tempdir().unwrap();
+
+                create_file(dir1.path(), "mycmd", false);
+                let executable = create_file(dir2.path(), "mycmd", true);
+
+                let path = make_path(&[dir1.path(), dir2.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), Some(executable));
+            }
+
+            #[test]
+            fn ignores_directories_with_matching_name() {
+                let dir = tempdir().unwrap();
+
+                fs::create_dir(dir.path().join("mycmd.exe")).unwrap();
+
+                let path = make_path(&[dir.path()]);
+
+                assert_eq!(find_binary("mycmd", &path), None);
+            }
         }
     }
 

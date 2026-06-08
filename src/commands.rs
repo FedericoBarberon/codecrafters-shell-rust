@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 #[derive(Debug, PartialEq)]
 pub enum Command {
     Exit,
@@ -5,7 +7,8 @@ pub enum Command {
     Type { args: Vec<String> },
 }
 
+#[derive(Debug, PartialEq)]
 pub enum CommandType {
     BuiltIn,
-    External { path: String },
+    External { path: PathBuf },
 }

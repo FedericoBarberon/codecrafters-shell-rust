@@ -29,7 +29,9 @@ pub fn execute(
             for arg in args {
                 let _ = match lookup(&arg) {
                     Some(CommandType::BuiltIn) => writeln!(out, "{arg} is a shell builtin"),
-                    Some(CommandType::External { path }) => writeln!(out, "{arg} is {path}"),
+                    Some(CommandType::External { path }) => {
+                        writeln!(out, "{arg} is {}", path.to_string_lossy())
+                    }
                     None => writeln!(out, "{arg} not found"),
                 };
             }
