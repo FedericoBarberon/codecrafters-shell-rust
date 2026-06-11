@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use crate::{
     executor::{ExecutionResult, execute},
-    parser::ParsedCommand,
+    parser::parse,
     resolver::resolve_command,
 };
 
@@ -18,23 +18,20 @@ pub fn start() {
 
         let input = buf.trim();
 
-        let parsed_command = ParsedCommand::parse(input);
+        let raw_command_node = match parse(input) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
 
-        if let Err(_) = parsed_command {
-            continue;
-        }
+        let command_node = match resolve_command(raw_command_node) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("{e}");
+                continue;
+            }
+        };
 
-        let parsed_command = parsed_command.unwrap();
-        let command = resolve_command(parsed_command);
-
-        if let Err(e) = command {
-            eprintln!("{e}");
-            continue;
-        }
-
-        let command = command.unwrap();
-
-        match execute(command, &mut io::stdout(), &mut io::stderr()) {
+        match execute(command_node, &mut io::stdout(), &mut io::stderr()) {
             Ok(ExecutionResult::Continue) => continue,
             Ok(ExecutionResult::Exit) => break,
             Err(e) => {

@@ -1,15 +1,6 @@
-use crate::{
-    commands::{Command, CommandType},
-    resolver::lookup,
-};
-use std::io::Write;
-use std::process;
-
-#[derive(Debug, thiserror::Error, PartialEq)]
-#[error("{error}")]
-pub struct ExecuteError {
-    error: String,
-}
+use crate::command_node::CommandNode;
+use std::io;
+use std::io::{Read, Write};
 
 #[derive(Debug, PartialEq)]
 pub enum ExecutionResult {
@@ -17,47 +8,36 @@ pub enum ExecutionResult {
     Exit,
 }
 
-pub fn execute(
-    command: Command,
-    out: &mut impl Write,
-    _err: &mut impl Write,
-) -> Result<ExecutionResult, ExecuteError> {
-    match command {
-        Command::Echo { args } => {
-            let _ = writeln!(out, "{}", args.join(" "));
-            Ok(ExecutionResult::Continue)
-        }
-        Command::Exit => Ok(ExecutionResult::Exit),
-        Command::Type { args } => {
-            for arg in args {
-                let _ = match lookup(&arg) {
-                    Some(CommandType::BuiltIn) => writeln!(out, "{arg} is a shell builtin"),
-                    Some(CommandType::External { path }) => {
-                        writeln!(out, "{arg} is {}", path.to_string_lossy())
-                    }
-                    None => writeln!(out, "{arg} not found"),
-                };
-            }
+#[derive(Debug, thiserror::Error, PartialEq)]
+#[error("{error}")]
+pub struct ExecutionError {
+    pub error: String,
+}
 
-            Ok(ExecutionResult::Continue)
-        }
-        Command::External { command, args } => {
-            let _status = process::Command::new(command)
-                .args(args)
-                .status()
-                .map_err(|error| ExecuteError {
-                    error: error.to_string(),
-                })?;
+pub trait Executable {
+    fn execute(
+        &self,
+        in_buf: &mut impl Read,
+        out_buf: &mut impl Write,
+        err_buf: &mut impl Write,
+    ) -> Result<ExecutionResult, ExecutionError>;
+}
 
-            Ok(ExecutionResult::Continue)
-        }
+pub fn execute<C: Executable>(
+    command_node: CommandNode<C>,
+    out_buf: &mut impl Write,
+    err_buf: &mut impl Write,
+) -> Result<ExecutionResult, ExecutionError> {
+    match command_node {
+        CommandNode::Single(command) => command.execute(&mut io::stdin(), out_buf, err_buf),
     }
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
-    use crate::{parser::ParsedCommand, resolver::resolve_command};
+    use crate::{commands::Command, parser::parse, resolver::resolve_command};
 
     mod echo_command {
         use super::*;
@@ -103,15 +83,15 @@ mod tests {
         }
     }
 
-    fn build_command(input: &str) -> Command {
-        resolve_command(ParsedCommand::parse(input).unwrap()).unwrap()
+    fn build_command(input: &str) -> CommandNode<Command> {
+        resolve_command(parse(input).unwrap()).unwrap()
     }
 
     fn test_execute(
         input: &str,
         expected_out: Option<&str>,
         expected_err: Option<&str>,
-        expected_result: Result<ExecutionResult, ExecuteError>,
+        expected_result: Result<ExecutionResult, ExecutionError>,
     ) {
         let command = build_command(input);
         let mut out_buf = Vec::new();
