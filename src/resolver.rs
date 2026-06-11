@@ -27,7 +27,9 @@ pub fn resolve_command(
 fn resolve_raw_command(RawCommand { command, args }: RawCommand) -> Result<Command, ResolveError> {
     match lookup(&command) {
         Some(CommandType::BuiltIn(built_in)) => Ok(Command::BuiltIn(built_in.build(args))),
-        Some(CommandType::External { path }) => Ok(Command::External(External::new(path, args))),
+        Some(CommandType::External { path }) => {
+            Ok(Command::External(External::new(command, path, args)))
+        }
         None => Err(ResolveError::UnknownCommand { command }),
     }
 }

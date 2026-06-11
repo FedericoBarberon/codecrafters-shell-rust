@@ -54,13 +54,18 @@ impl BuiltInKind {
 
 #[derive(Debug, PartialEq)]
 pub struct External {
+    command: String,
     path: PathBuf,
     args: Vec<String>,
 }
 
 impl External {
-    pub fn new(path: PathBuf, args: Vec<String>) -> Self {
-        Self { path, args }
+    pub fn new(command: String, path: PathBuf, args: Vec<String>) -> Self {
+        Self {
+            command,
+            path,
+            args,
+        }
     }
 }
 
