@@ -76,7 +76,7 @@ impl Executable for External {
         _out_buf: &mut impl Write,
         _err_buf: &mut impl Write,
     ) -> Result<ExecutionResult, ExecutionError> {
-        let _status = process::Command::new(&self.path)
+        let _status = process::Command::new(&self.command)
             .args(&self.args)
             .status()
             .map_err(|error| ExecutionError {
