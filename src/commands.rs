@@ -136,22 +136,42 @@ impl Executable for BuiltIn {
             BuiltIn::Cd { args } => {
                 if args.is_empty() {
                     let _ = writeln!(err_buf, "cd: too few arguments");
-                } else if args.len() > 1 {
-                    let _ = writeln!(err_buf, "cd: too many arguments");
-                } else {
-                    let path = PathBuf::from(&args[0]);
+                    return Ok(ExecutionResult::Continue);
+                }
 
-                    if path.is_dir() {
-                        if let Err(e) = env::set_current_dir(path) {
-                            let _ = writeln!(err_buf, "cd: failed to change directory: {e}");
+                if args.len() > 1 {
+                    let _ = writeln!(err_buf, "cd: too many arguments");
+                    return Ok(ExecutionResult::Continue);
+                }
+
+                let mut path = PathBuf::from(&args[0]);
+                let mut iter = path.iter();
+
+                if let Some(comp) = iter.next()
+                    && comp == "~"
+                {
+                    match env::home_dir() {
+                        Some(home_dir) => {
+                            path = PathBuf::from_iter(iter);
+                            path = PathBuf::from_iter([home_dir, path]);
                         }
-                    } else {
-                        let _ = writeln!(
-                            err_buf,
-                            "cd: {}: No such file or directory",
-                            path.to_string_lossy()
-                        );
+                        None => {
+                            let _ = writeln!(err_buf, "cd: failed to read home directory");
+                            return Ok(ExecutionResult::Continue);
+                        }
                     }
+                }
+
+                if path.is_dir() {
+                    if let Err(e) = env::set_current_dir(&path) {
+                        let _ = writeln!(err_buf, "cd: failed to change directory: {e}");
+                    }
+                } else {
+                    let _ = writeln!(
+                        err_buf,
+                        "cd: {}: No such file or directory",
+                        path.to_string_lossy()
+                    );
                 }
 
                 Ok(ExecutionResult::Continue)
