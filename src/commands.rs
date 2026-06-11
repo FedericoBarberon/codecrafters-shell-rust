@@ -5,6 +5,8 @@ use std::{
     process,
 };
 
+use strum_macros::{AsRefStr, EnumIter, EnumString};
+
 use crate::{
     executor::{Executable, ExecutionError, ExecutionResult},
     resolver::lookup,
@@ -18,7 +20,7 @@ pub enum Command {
 
 #[derive(Debug, PartialEq)]
 pub enum CommandType {
-    BuiltIn,
+    BuiltIn(BuiltInKind),
     External { path: PathBuf },
 }
 
@@ -28,6 +30,26 @@ pub enum BuiltIn {
     Echo { args: Vec<String> },
     Type { args: Vec<String> },
     Pwd,
+}
+
+#[derive(Debug, EnumString, PartialEq, EnumIter, AsRefStr)]
+#[strum(serialize_all = "snake_case")]
+pub enum BuiltInKind {
+    Exit,
+    Echo,
+    Type,
+    Pwd,
+}
+
+impl BuiltInKind {
+    pub fn build(self, args: Vec<String>) -> BuiltIn {
+        match self {
+            Self::Exit => BuiltIn::Exit,
+            Self::Echo => BuiltIn::Echo { args },
+            Self::Type => BuiltIn::Type { args },
+            BuiltInKind::Pwd => BuiltIn::Pwd,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -81,7 +103,9 @@ impl Executable for BuiltIn {
 
                 for arg in args {
                     let _ = match lookup(&arg) {
-                        Some(CommandType::BuiltIn) => writeln!(out_buf, "{arg} is a shell builtin"),
+                        Some(CommandType::BuiltIn(_)) => {
+                            writeln!(out_buf, "{arg} is a shell builtin")
+                        }
                         Some(CommandType::External { path }) => {
                             writeln!(out_buf, "{arg} is {}", path.to_string_lossy())
                         }

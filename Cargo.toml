@@ -11,3 +11,5 @@ bytes = "1.3.0"       # helps manage buffers
 thiserror = "1.0.38"  # error handling
 tempfile = "3.27.0"   # testing fs
 permissions = "0.5.1" # check file permissions
+strum = "0.28.0"
+strum_macros = "0.28.0"

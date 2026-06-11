@@ -1,10 +1,10 @@
-use std::{env, path::PathBuf};
+use std::{env, path::PathBuf, str::FromStr};
 
 use permissions::is_executable;
 
 use crate::{
     command_node::CommandNode,
-    commands::{BuiltIn, Command, CommandType, External},
+    commands::{BuiltInKind, Command, CommandType, External},
     parser::RawCommand,
 };
 
@@ -26,33 +26,20 @@ pub fn resolve_command(
 
 fn resolve_raw_command(RawCommand { command, args }: RawCommand) -> Result<Command, ResolveError> {
     match lookup(&command) {
-        Some(CommandType::BuiltIn) => resolve_builtin(command, args).map(|b| Command::BuiltIn(b)),
+        Some(CommandType::BuiltIn(built_in)) => Ok(Command::BuiltIn(built_in.build(args))),
         Some(CommandType::External { path }) => Ok(Command::External(External::new(path, args))),
         None => Err(ResolveError::UnknownCommand { command }),
     }
 }
 
 pub fn lookup(command: &str) -> Option<CommandType> {
-    if is_builtin(command) {
-        Some(CommandType::BuiltIn)
+    if let Ok(built_in) = BuiltInKind::from_str(command) {
+        Some(CommandType::BuiltIn(built_in))
     } else if let Some(path) = find_binary(command, &env::var("PATH").ok()?) {
         Some(CommandType::External { path })
     } else {
         None
     }
-}
-
-fn resolve_builtin(command: String, args: Vec<String>) -> Result<BuiltIn, ResolveError> {
-    match command.as_str() {
-        "exit" => Ok(BuiltIn::Exit),
-        "echo" => Ok(BuiltIn::Echo { args }),
-        "type" => Ok(BuiltIn::Type { args }),
-        _ => Err(ResolveError::UnknownCommand { command }),
-    }
-}
-
-fn is_builtin(command: &str) -> bool {
-    ["echo", "exit", "type"].contains(&command)
 }
 
 fn find_binary(name: &str, paths: &str) -> Option<PathBuf> {
@@ -70,6 +57,7 @@ fn find_binary(name: &str, paths: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::BuiltIn;
     use crate::parser::parse;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
@@ -86,6 +74,7 @@ mod tests {
     }
 
     mod exit_command {
+
         use super::*;
 
         #[test]
@@ -126,10 +115,13 @@ mod tests {
 
     #[test]
     fn lookup_builtin() {
-        let commands = ["echo", "exit", "type"];
+        use strum::IntoEnumIterator;
 
-        for cmd in commands {
-            assert_eq!(lookup(cmd), Some(CommandType::BuiltIn));
+        for built_in in BuiltInKind::iter() {
+            assert_eq!(
+                lookup(built_in.as_ref()),
+                Some(CommandType::BuiltIn(built_in))
+            );
         }
     }
 
