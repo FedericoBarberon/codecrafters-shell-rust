@@ -30,6 +30,7 @@ pub enum BuiltIn {
     Echo { args: Vec<String> },
     Type { args: Vec<String> },
     Pwd,
+    Cd { args: Vec<String> },
 }
 
 #[derive(Debug, EnumString, PartialEq, EnumIter, AsRefStr)]
@@ -39,6 +40,7 @@ pub enum BuiltInKind {
     Echo,
     Type,
     Pwd,
+    Cd,
 }
 
 impl BuiltInKind {
@@ -47,7 +49,8 @@ impl BuiltInKind {
             Self::Exit => BuiltIn::Exit,
             Self::Echo => BuiltIn::Echo { args },
             Self::Type => BuiltIn::Type { args },
-            BuiltInKind::Pwd => BuiltIn::Pwd,
+            Self::Pwd => BuiltIn::Pwd,
+            Self::Cd => BuiltIn::Cd { args },
         }
     }
 }
@@ -128,6 +131,29 @@ impl Executable for BuiltIn {
                         let _ = writeln!(err_buf, "{e}");
                     }
                 }
+                Ok(ExecutionResult::Continue)
+            }
+            BuiltIn::Cd { args } => {
+                if args.is_empty() {
+                    let _ = writeln!(err_buf, "cd: too few arguments");
+                } else if args.len() > 1 {
+                    let _ = writeln!(err_buf, "cd: too many arguments");
+                } else {
+                    let path = PathBuf::from(&args[0]);
+
+                    if path.is_dir() {
+                        if let Err(e) = env::set_current_dir(path) {
+                            let _ = writeln!(err_buf, "cd: failed to change directory: {e}");
+                        }
+                    } else {
+                        let _ = writeln!(
+                            err_buf,
+                            "cd: {}: No such file or directory",
+                            path.to_string_lossy()
+                        );
+                    }
+                }
+
                 Ok(ExecutionResult::Continue)
             }
         }
